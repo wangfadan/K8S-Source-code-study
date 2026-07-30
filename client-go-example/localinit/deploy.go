@@ -31,7 +31,7 @@ func Deploytyped() {
 	if err != nil {
 		panic(err)
 	}
-	clientset, err := kubernetes.NewForConfig(config)
+	clientset, err := kubernetes.NewForConfig(config) //构建dynamic类型客户端
 	if err != nil {
 		panic(err)
 	}

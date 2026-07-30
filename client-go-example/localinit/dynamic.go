@@ -16,7 +16,10 @@ import (
 	"k8s.io/client-go/util/retry"
 )
 
-func dynamicway() {
+// typed = 用 Go 结构体操作资源，dynamic = 用 map 操作资源。
+// typed 有编译检查，dynamic 没有 （因为 go struct 预先定义了key 但是map可以塞任何key）
+// typed 只能操作它"认识"的资源，dynamic 什么都能操作 （所以自己的CRD用dynamic）
+func Dynamicway() {
 	var kubeconfig *string
 	if home := homedir.HomeDir(); home != "" {
 		kubeconfig = flag.String("kubeconfig", filepath.Join(home, ".kube", "config"), "(optional) absolute path to the kubeconfig file")
@@ -29,13 +32,13 @@ func dynamicway() {
 	if err != nil {
 		panic(err)
 	}
-	client, err := dynamic.NewForConfig(config)
+	client, err := dynamic.NewForConfig(config) // 构建 dynamic类型的客户端
 	if err != nil {
 		panic(err)
 	}
-
+	// 资源标识符
 	deploymentRes := schema.GroupVersionResource{Group: "apps", Version: "v1", Resource: "deployments"}
-
+	// 构建资源的定义
 	deployment := &unstructured.Unstructured{
 		Object: map[string]interface{}{
 			"apiVersion": "apps/v1",
@@ -79,6 +82,7 @@ func dynamicway() {
 
 	// Create Deployment
 	fmt.Println("Creating deployment...")
+	//使用动态客户端向 Kubernetes 集群创建 Deployment 资源的实际操作
 	result, err := client.Resource(deploymentRes).Namespace(apiv1.NamespaceDefault).Create(context.TODO(), deployment, metav1.CreateOptions{})
 	if err != nil {
 		panic(err)
@@ -88,18 +92,6 @@ func dynamicway() {
 	// Update Deployment
 	prompt()
 	fmt.Println("Updating deployment...")
-	//    You have two options to Update() this Deployment:
-	//
-	//    1. Modify the "deployment" variable and call: Update(deployment).
-	//       This works like the "kubectl replace" command and it overwrites/loses changes
-	//       made by other clients between you Create() and Update() the object.
-	//    2. Modify the "result" returned by Get() and retry Update(result) until
-	//       you no longer get a conflict error. This way, you can preserve changes made
-	//       by other clients between Create() and Update(). This is implemented below
-	//			 using the retry utility package included with client-go. (RECOMMENDED)
-	//
-	// More Info:
-	// https://git.k8s.io/community/contributors/devel/sig-architecture/api-conventions.md#concurrency-control-and-consistency
 
 	retryErr := retry.RetryOnConflict(retry.DefaultRetry, func() error {
 		// Retrieve the latest version of Deployment before attempting update
@@ -110,17 +102,19 @@ func dynamicway() {
 		}
 
 		// update replicas to 1
+		//result.Object:要修改的对象 int64(1)值   "spec", "replicas"路径参数表示result.Object["spec"]["replicas"]
 		if err := unstructured.SetNestedField(result.Object, int64(1), "spec", "replicas"); err != nil {
 			panic(fmt.Errorf("failed to set replica value: %v", err))
 		}
 
-		// extract spec containers
+		// 提取容器列表
 		containers, found, err := unstructured.NestedSlice(result.Object, "spec", "template", "spec", "containers")
 		if err != nil || !found || containers == nil {
 			panic(fmt.Errorf("deployment containers not found or error in spec: %v", err))
 		}
 
 		// update container[0] image
+		// 修改切片后写回原对象
 		if err := unstructured.SetNestedField(containers[0].(map[string]interface{}), "nginx:1.13", "image"); err != nil {
 			panic(err)
 		}
